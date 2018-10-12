@@ -1,0 +1,58 @@
+---
+title: "Chapter 2"
+author: "Zexuan Zhao"
+date: "12 October 2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Load data and package needed.
+
+```{r message = FALSE}
+library(sf)          # classes and functions for vector data
+library(raster)      # classes and functions for raster data
+library(spData)        # load geographic data
+library(spDataLarge)   # load larger geographic data
+```
+
+# 2.1 Introduction:
+* The vector data model represents the world using points, lines and polygons. These have discrete, well-defined borders, meaning that vector datasets usually have a high level of precision.Vector data tends to dominate the social sciences because human settlements tend to have discrete borders.  
+* The raster data model divides the surface up into cells of constant size. Raster datasets are the basis of background images used in web-mapping and have been a vital source of geographic data since the origins of aerial photography and satellite-based remote sensing devices. Rasters aggregate spatially specific features to a given resolution, meaning that they are consistent over space and scalable (many worldwide raster datasets are available).Raster often dominates in environmental sciences because of the reliance on remote sensing data.  
+
+# 2.2 Vector Data
+* The geographic vector model is based on points located within a coordinate reference system (CRS). Points can represent self-standing features (e.g. the location of a bus stop) or they can be linked together to form more complex geometries such as lines and polygons.  
+* Coordinates consist of two numbers representing distance from an origin, usually in x and y dimensions.
+
+## 2.2.1 An introduction to simple features  
+* Simple Features is a hierarchical data model that represents a wide range of geometry types.  
+* Simple feature objects in R are stored in a data frame, with geographic data occupying a special column, a ‘list-column’. This column is usually named ‘geom’ or ‘geometry’.
+
+Now we're using world dataset from spData
+```{r}
+head(world)
+plot(world)
+```
+
+Notice that $plot()$ will create multiple maps, one for each variable in the world datasets.
+
+Being able to treat spatial objects as regular data frames with spatial powers has many advantages, especially if you are already used to working with data frames. You can use $summary()$ function to provide an overview of the variables in the $world$ object.
+
+```{r}
+summary(world$lifeExp)
+print("-----------------------")
+summary(world["lifeExp"])
+```
+
+* Notice that in the second line geometry is kept unless the user deliberately removes them.  
+* The word MULTIPOLYGON in the summary output above refers to the geometry type of features (countries) in the world object. This representation is necessary for countries with islands such as Indonesia and Greece. Other geometry types are described in section
+
+sf(Spatial DataFrame) objects are easy to subset. The code below shows its first two rows and three columns. The output shows two major differences compared with a regular data.frame: the inclusion of additional geographic data (geometry type, dimension, bbox and CRS information - epsg (SRID), proj4string), and the presence of final geometry column:  
+
+```{r}
+world_mini = world[1:2, 1:3]
+world_mini
+```
+
