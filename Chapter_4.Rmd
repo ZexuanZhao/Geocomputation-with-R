@@ -1,0 +1,102 @@
+---
+title: "Chapter 4"
+author: "Zexuan Zhao"
+date: "15 October 2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(sf)
+library(raster)
+library(tidyverse)
+library(spData)
+```
+
+# 4.1 Introduction  
+
+Spatial operations differ from non-spatial operations in some ways, however. To illustrate the point, imagine you are researching road safety. Spatial joins can be used to find road speed limits related with administrative zones, even when no zone ID is provided. But this raises the question: should the road completely fall inside a zone for its values to be joined? Or is simply crossing or being within a certain distance sufficent? When posing such questions it becomes apparent that spatial operations differ substantially from attribute operations on data frames: the type of spatial relationship between objects must be considered. 
+
+# 4.2 Spatial operations on vector data  
+
+## 4.2.1 Spatial subsetting
+
+Spatial subsetting is the process of selecting features of a spatial object based on whether or not they in some way relate in space to another object.
+
+Like attribute subsetting x[y, ] subsets features of a target x using the contents of a source object y. Instead of y being of class logical or integer — a vector of TRUE and FALSE values or whole numbers — for spatial subsetting it is another spatial (sf) object.  
+
+The following code chunk first creates an object representing Canterbury, then uses spatial subsetting to return all high points in the region:  
+```{r}
+canterbury <-  nz %>% 
+  filter(Name == "Canterbury")
+canterbury_height <-  nz_height[canterbury, ] # use sf object to subset
+nz %>% 
+  st_geometry() %>% 
+  ggplot() +
+    geom_sf() +
+    geom_sf(aes(col = "red"), data =canterbury_height) +
+    theme(legend.position="none")
+```
+
+Various topological relations can be used for spatial subsetting. These determine the type of spatial relationship that features in the target object must have with the subsetting object to be selected, including touches, crosses or within (see section 4.2.2). Intersects is the default spatial subsetting operator, a default that returns TRUE for many types of spatial relations, including touches, crosses and is within. These alternative spatial operators can be specified with the op = argument, a third argument that can be passed to the [ operator for sf objects. 
+
+The second argument specifies which attribute to show in the result, by default, all.
+
+```{r}
+nz_height[canterbury, , op = st_disjoint] # do the opposite as intersect
+```
+
+Using topological operators:  
+
+```{r}
+sel_sgbp <-  st_intersects(x = nz_height, y = canterbury)
+# summary(sel_sgbp)
+class(sel_sgbp)
+sel_logical <-  lengths(sel_sgbp) > 0 # convert sgbp to logical: The function lengths() identifies which features in nz_height intersect with ANY objects in y
+canterbury_height2 <-  nz_height[sel_logical, ]
+```
+
+In the above code chunk an object of class sgbp (a sparse geometry binary predicate, a list of length x in the spatial operation) is created and then converted into a logical vector sel_logical (containing only TRUE and FALSE values). The function lengths() identifies which features in nz_height intersect with any objects in y. In this case 1 is the greatest possible value but for more complex operations one could use the method to subset only features that intersect with, for example, 2 or more features from the source object.
+
+Another way to do this is to set sparse = FALSE: 
+```{r}
+st_intersects(x = nz_height, y = canterbury, sparse = FALSE)
+```  
+The result is the same as sel_logical as there is only one row in canterbury.
+
+A more tidy way to do this is to use dplyr function filter():  
+```{r}
+canterbury_height3 <- nz_height %>% 
+  st_intersects(canterbury, sparse = FALSE)[,1] %>%
+  filter()
+```
+4.2.2 Topological relations
+
+First we need to create demonstrative sf objects:  
+```{r}
+# create a polygon
+a_poly <-  st_polygon(list(rbind(c(-1, -1), c(1, -1), c(1, 1), c(-1, -1))))
+a <-  st_sfc(a_poly)
+# create a line
+l_line <-  st_linestring(x = matrix(c(-1, -1, -0.5, 1), ncol = 2))
+l <-  st_sfc(l_line)
+# create points
+p_matrix <-  matrix(c(0.5, 1, -1, 0, 0, 1, 0.5, 1), ncol = 2)
+p_multi <-  st_multipoint(x = p_matrix)
+p <-  st_cast(st_sfc(p_multi), "POINT")
+plot(a)
+plot(l, add = TRUE)
+plot(p, add = TRUE)
+```
+
+A simple query is: which of the points in p intersect in some way with polygon a?  We can answer by using a spatial predicate such as do the objects intersect? This is implemented in sf as follows:  
+
+```{r}
+st_intersects(p, a)
+st_intersects(p, a, sparse = FALSE)
+```
+
+Note that st_intersects() returns TRUE for the second feature in the object p even though it just touches the polygon a: intersects is a ‘catch-all’ topological operation which identifies many types of spatial relation.
