@@ -87,12 +87,13 @@ l <-  st_sfc(l_line)
 p_matrix <-  matrix(c(0.5, 1, -1, 0, 0, 1, 0.5, 1), ncol = 2)
 p_multi <-  st_multipoint(x = p_matrix)
 p <-  st_cast(st_sfc(p_multi), "POINT")
-plot(a)
-plot(l, add = TRUE)
-plot(p, add = TRUE)
+ggplot() +
+  geom_sf(data = a) +
+  geom_sf(data = l) +
+  geom_sf(data = p)
 ```
 
-A simple query is: which of the points in p intersect in some way with polygon a?  We can answer by using a spatial predicate such as do the objects intersect? This is implemented in sf as follows:  
+Using st_intersects() to find geometries in argument 1 that intersect with geometries in argument 2:  
 
 ```{r}
 st_intersects(p, a)
@@ -100,3 +101,106 @@ st_intersects(p, a, sparse = FALSE)
 ```
 
 Note that st_intersects() returns TRUE for the second feature in the object p even though it just touches the polygon a: intersects is a ‘catch-all’ topological operation which identifies many types of spatial relation.
+
+Using st_disjoint() to find geometries in argument 1 that do not intersect with geometries in argument 2:  
+
+```{r}
+st_disjoint(p, a, sparse = FALSE)[, 1]
+```
+Using st_within() to find geometries in argument 1 that are totally within geometries in argument 2:  
+
+```{r}
+st_within(p, a, sparse = FALSE)[, 1]
+```
+Using st_touches() to find geometries in argument 1 that touch the boundaries of geometries in argument 2:  
+
+```{r}
+st_touches(p, a, sparse = FALSE)[, 1]
+```
+
+Using st_is_within_distance() to find geometries in argument 1 that are within a specific distance from geometries in argument 2:  
+
+```{r}
+sel = st_is_within_distance(p, a, dist = 0.9) # can only return a sparse matrix
+lengths(sel) > 0
+```
+
+## 4.2.3 Spatial joining
+
+Spatial data joining relies on shared areas of geographic space (known as spatial overlay).  
+
+Imagine you have 10 points randomly distributed across the Earth’s surface. Of the points that are on land, which countries are they in? Random points to demonstrate spatial joining are created as follows:  
+
+```{r}
+set.seed(2018) # set seed for reproducibility
+bb_world <-  st_bbox(world) # the world's bounds
+random_df <-  tibble(
+  x = runif(n = 10, min = bb_world[1], max = bb_world[3]),
+  y = runif(n = 10, min = bb_world[2], max = bb_world[4])
+)
+random_points <-  random_df %>% 
+  st_as_sf(coords = c("x", "y")) %>% # set coordinates
+  st_set_crs(4326) # set geographic CRS
+```
+
+Using st_join() to add variables to points:  
+
+```{r}
+random_points_geo <- random_points %>% 
+  st_join(world) %>% 
+  select(country = name_long)
+ggplot() +
+  geom_sf(data = st_geometry(world)) + 
+  geom_sf(data = random_points_geo)
+```
+
+## 4.2.4 Non-overlapping joins
+
+The datasets cycle_hire and cycle_hire_osm are closely related but they do not touch.  
+
+```{r}
+plot(st_geometry(cycle_hire), col = "blue")
+plot(st_geometry(cycle_hire_osm), add = TRUE, pch = 3, col = "red")
+# We can check if any points are the same as shown below:
+any(st_touches(cycle_hire, cycle_hire_osm, sparse = FALSE))
+```
+
+Non-overlapping join is to assign values to related but not overlapped geometries.  
+Using the topological operator st_is_within_distance() and setting a threshold distance:  
+
+```{r}
+cycle_hire_P <-  st_transform(cycle_hire, 27700)
+cycle_hire_osm_P <-  st_transform(cycle_hire_osm, 27700)
+sel <-  cycle_hire_P %>% 
+  st_is_within_distance(cycle_hire_osm_P, dist = 20)
+summary(lengths(sel) > 0)
+```
+
+This shows that there are 438 points in the target object cycle_hire_P within the threshold distance of cycle_hire_osm_P. 
+
+Using st_join() and argument dist to do non-overlapping join:  
+
+```{r}
+z <-  cycle_hire_P %>% 
+  st_join( cycle_hire_osm_P, st_is_within_distance, dist = 20)
+nrow(cycle_hire)
+nrow(z)
+```
+
+Note that the number of rows in the joined result is greater than the target. This is because some cycle hire stations in cycle_hire_P have multiple matches in cycle_hire_osm_P. We need toaggregate the values for the overlapping points and return the mean.  
+
+```{r}
+z <-  z %>% 
+  group_by(id) %>% 
+  summarize(capacity = mean(capacity))
+nrow(z) == nrow(cycle_hire)
+```
+
+The capacity of nearby stations can be verified by comparing a plot of the capacity of the source cycle_hire_osm data with the results in this new object:  
+
+```{r}
+plot(cycle_hire_osm["capacity"])
+plot(z["capacity"])
+```
+
+## 4.2.5 Spatial data aggregation
