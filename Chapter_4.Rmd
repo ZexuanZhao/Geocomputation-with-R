@@ -37,11 +37,11 @@ nz %>%
   st_geometry() %>% 
   ggplot() +
     geom_sf() +
-    geom_sf(aes(col = "red"), data =canterbury_height) +
+    geom_sf(aes(col = "red"), data = canterbury_height) +
     theme(legend.position="none")
 ```
 
-Various topological relations can be used for spatial subsetting. These determine the type of spatial relationship that features in the target object must have with the subsetting object to be selected, including touches, crosses or within (see section 4.2.2). Intersects is the default spatial subsetting operator, a default that returns TRUE for many types of spatial relations, including touches, crosses and is within. These alternative spatial operators can be specified with the op = argument, a third argument that can be passed to the [ operator for sf objects. 
+Various topological relations can be used for spatial subsetting. These determine the type of spatial relationship that features in the target object must have with the subsetting object to be selected, including touches, crosses or within. Intersects is the default spatial subsetting operator, a default that returns TRUE for many types of spatial relations, including touches, crosses and is within. These alternative spatial operators can be specified with the op = argument, a third argument that can be passed to the [ operator for sf objects. 
 
 The second argument specifies which attribute to show in the result, by default, all.
 
@@ -52,18 +52,19 @@ nz_height[canterbury, , op = st_disjoint] # do the opposite as intersect
 Using topological operators:  
 
 ```{r}
-sel_sgbp <-  st_intersects(x = nz_height, y = canterbury)
+sel_sgbp <-  nz_height %>% 
+  st_intersects(canterbury)
 # summary(sel_sgbp)
 class(sel_sgbp)
-sel_logical <-  lengths(sel_sgbp) > 0 # convert sgbp to logical: The function lengths() identifies which features in nz_height intersect with ANY objects in y
-canterbury_height2 <-  nz_height[sel_logical, ]
+sel_logical1 <-  lengths(sel_sgbp) > 0 # convert sgbp to logical: The function lengths() identifies which features in nz_height intersect with ANY objects in y
+canterbury_height2 <-  nz_height[sel_logical2, ]
 ```
 
 In the above code chunk an object of class sgbp (a sparse geometry binary predicate, a list of length x in the spatial operation) is created and then converted into a logical vector sel_logical (containing only TRUE and FALSE values). The function lengths() identifies which features in nz_height intersect with any objects in y. In this case 1 is the greatest possible value but for more complex operations one could use the method to subset only features that intersect with, for example, 2 or more features from the source object.
 
 Another way to do this is to set sparse = FALSE: 
 ```{r}
-st_intersects(x = nz_height, y = canterbury, sparse = FALSE)
+sel_logical2 <- st_intersects(x = nz_height, y = canterbury, sparse = FALSE)
 ```  
 The result is the same as sel_logical as there is only one row in canterbury.
 
@@ -73,7 +74,8 @@ canterbury_height3 <- nz_height %>%
   st_intersects(canterbury, sparse = FALSE)[,1] %>%
   filter()
 ```
-4.2.2 Topological relations
+
+## 4.2.2 Topological relations
 
 First we need to create demonstrative sf objects:  
 ```{r}
@@ -182,7 +184,7 @@ Using st_join() and argument dist to do non-overlapping join:
 
 ```{r}
 z <-  cycle_hire_P %>% 
-  st_join( cycle_hire_osm_P, st_is_within_distance, dist = 20)
+  st_join(cycle_hire_osm_P, st_is_within_distance, dist = 20) # st_join(x, y, function, arguments for function)
 nrow(cycle_hire)
 nrow(z)
 ```
@@ -203,4 +205,121 @@ plot(cycle_hire_osm["capacity"])
 plot(z["capacity"])
 ```
 
-## 4.2.5 Spatial data aggregation
+## 4.2.5 Spatial data aggregation  
+
+Spatial data aggregation can be a way of condensing data.  
+Just as group_by() and summarize(), doing spatial data aggregatiton, you need to specify the geometry of source (y) that defines how values in the target object (x) are grouped.   
+```{r}
+nz_avheight <- aggregate(x = nz_height, by = nz, FUN = mean)
+```
+
+```{r}
+nz_avheight2 <-  nz %>%
+  st_join(nz_height) %>%
+  group_by(Name) %>%
+  summarize(elevation = mean(elevation, na.rm = TRUE))
+```
+
+Spatial congruence is an important concept related to spatial aggregation. An aggregating object (y) is congruent with the target object (x) if the two objects have shared borders. Often this is the case for administrative boundary data, whereby the larger units are composed of many smaller units.  
+
+Incongruent aggregating objects, by contrast, do not share common borders with the target, which  is problematic for spatial aggregation (and other spatial operations). Areal interpolation can help to alleviate this issue. It helps to transfer data from one set of areal units to another. A number of algorithms have been developed for areal interpolation, including area weighted and pycnophylactic interpolation methods.  
+
+By areal interpolation, we can transfer values from one polygons to another polygons, for example, using area weighted spatial interpolation.  
+
+```{r}
+# aggregate by suming up the values of the intersections falling into the aggregating zones 
+agg_aw <-  st_interpolate_aw(incongruent[, "value"], aggregating_zones,
+                           extensive = TRUE)
+agg_aw$value
+```
+
+* Spatial extensive variables are dependent on the spatial units used, in this case, area.
+* Spatial intensive variables are independent on the spatial units used, for example, income per head. Set extensive = FALSE.
+
+## 4.2.6 Distance relations  
+
+The distance between two objects is calculated with the st_distance() function.  
+
+```{r}
+nz_heighest <-  nz_height %>% 
+  top_n(n = 1, wt = elevation)
+canterbury_centroid <-  st_centroid(canterbury)
+# find the distance between the highest point to every centroid of each geometry in canterbury
+st_distance(nz_heighest, canterbury_centroid)
+```
+
+here are two potentially surprising things about the result:
+
+*It has units, telling us the distance is 100,000 meters, not 100,000 inches, or any other measure of distance.
+It is returned as a matrix, even though the result only contains a single value.*
+
+st_distance() has the ability to return distance matrices between all combinations of features in objects x and y.
+
+```{r}
+co <-  filter(nz, grepl("Canter|Otag", Name))
+st_distance(nz_height[1:3, ], co)
+```
+
+Note that the distance between the second and third feature in nz_height and the second feature in co is zero. This demonstrates the fact that distances between points and polygons refer to the distance to any part of the polygon:  
+
+```{r}
+plot(st_geometry(co)[2])
+plot(st_geometry(nz_height)[2:3], add = TRUE)
+```
+
+# 4.3 Spatial operations on raster data  
+
+## 4.3.1 Spatial subsetting
+To use coordinates for subsetting, one can ‘translate’ the coordinates into a cell ID with the raster function cellFromXY(). An alternative is to use raster::extract().  
+```{r}
+id = cellFromXY(elev, xy = c(0.1, 0.1))
+elev[id]
+# the same as
+raster::extract(elev, data.frame(x = 0.1, y = 0.1))
+```
+
+Raster objects can also be subset with another raster object.  
+```{r}
+clip <-  raster(nrows = 3, ncols = 3, res = 0.3, xmn = 0.9, xmx = 1.8, 
+              ymn = -0.45, ymx = 0.45, vals = rep(1, 9))
+elev[clip] # extract values instead of a raster object
+```
+
+Basically, this amounts to retrieving the values of the first raster (here: elev) falling within the extent of a second raster (here: clip) and returns the values of specific cells.
+
+If we wanna retrieve a raster object, set drop = FALSE.  
+```{r}
+elev[1:2, drop = FALSE]    # spatial subsetting with cell IDs
+elev[1, 1:2, drop = FALSE] # spatial subsetting by row,column indeces
+```
+
+We can also use a raster with logical values to subset/mask another raster.  
+```{r}
+# create raster mask
+rmask <-  elev 
+values(rmask) <-  sample(c(NA, TRUE), ncell(rmask), replace = TRUE)
+
+# spatial subsetting
+elev[rmask, drop = FALSE]           # with [ operator
+mask(elev, rmask)                   # with mask()
+overlay(elev, rmask, fun = "max")   # with overlay
+```
+
+## 4.3.2 Map algebra  
+
+Raster datasets only implicitly store coordinates. To derive the coordinate of a specific cell, we have to calculate it using its matrix position and the raster resolution and origin.  
+* Raster package checks the headers of the rasters on which to perform any algebraic operation, and only if they are correspondent to each other (same extent, projection and resolution), the processing goes on.  
+* Map algebra retains the so-called one-to-one locational correspondence.   
+
+Map algebra (or cartographic modeling) divides raster operations into four subclasses, with each of them either working on one or several grids simultaneously:  
+*Local or per-cell operations.
+Focal or neighborhood operations. Most often the output cell value is the result of a 3 x 3 input cell block.
+Zonal operations are similar to focal operations but instead of a predefined neighborhood, classes, which can take on any, i.e. also an irregular size and shape, are the basis for calculations.
+Global or per-raster operations, that means the output cell derives its value potentially from one or several entire rasters.*  
+
+## 4.3.3 Local operations  
+Local operations comprise all cell-by-cell operations in one or several layers. A good example is the classification of intervals of numeric values into groups such as grouping a digital elevation model into low (class 1), middle (class 2) and high elevations (class 3).  
+
+
+
+
